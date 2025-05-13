@@ -8,25 +8,37 @@ const TodoList = () => {
     const [tareas, setTareas] = useState([]);
     const [input, setInput] = useState("");
 
+    const cargarTareas = () => {
+        fetch(`${API_BASE}/users/${USERNAME}`)
+            .then(res => {
+                if (!res.ok) throw new Error("Error al obtener tareas");
+                return res.json();
+            })
+            .then(data => {
+                const tareasFiltradas = data.todos.filter(t => t.label !== "init");
+                setTareas(tareasFiltradas);
+                console.log("Datos obtenidos:", data.todos);
+            })
+            .catch(err => console.error("Error al cargar tareas:", err));
+    };
+
     useEffect(() => {
         fetch(`${API_BASE}/users/${USERNAME}`)
             .then(res => {
                 if (res.status === 404) {
-                    return fetch(`${API_BASE}/todos/${USERNAME}`, {
+                    return fetch(`${API_BASE}/users/${USERNAME}`, {
                         method: "POST",
-                        body: JSON.stringify([]),
                         headers: {
                             "Content-Type": "application/json"
-                        }
+                        },
+                        body: JSON.stringify([
+                            { label: "init", is_done: false }
+                        ])
                     });
                 }
-                return res;
             })
-            .then(res => res.json())
-            .then(data => {
-                if (Array.isArray(data)) setTareas(data);
-            })
-            .catch(err => console.error("Error al obtener tareas:", err));
+            .then(() => cargarTareas())
+            .catch(err => console.error("Error en la inicialización:", err));
     }, []);
 
     const manejarEntrada = (e) => {
@@ -35,69 +47,56 @@ const TodoList = () => {
 
     const manejarTecla = (e) => {
         if (e.key === "Enter" && input.trim() !== "") {
-            const nuevaTarea = {
-                label: input.trim(),
-                done: false
-            };
-    
-            const nuevasTareas = [...tareas, nuevaTarea].filter(t => 
-                t && typeof t.label === "string" && t.label.trim() !== "" && typeof t.done === "boolean"
-            );
-    
             fetch(`${API_BASE}/todos/${USERNAME}`, {
                 method: "POST",
-                body: JSON.stringify(nuevasTareas),
                 headers: {
                     "Content-Type": "application/json"
-                }
+                },
+                body: JSON.stringify({
+                    label: input.trim(),
+                    is_done: false
+                }),
             })            
                 .then(res => {
                     if (!res.ok) throw new Error("No se pudo actualizar");
                     return res.json();
                 })
                 .then(() => {
-                    setTareas(nuevasTareas);
                     setInput("");
+                    cargarTareas();
                 })
                 .catch(err => console.error("Error al agregar tarea:", err));
         }
     };
 
     const eliminarTarea = (indice) => {
-        const nuevasTareas = tareas
-            .filter((_, i) => i !== indice)
-            .map(t => ({
-                label: t.label || "Tarea sin nombre",
-                done: typeof t.done === "boolean" ? t.done : false
-            }));
-
-            fetch(`${API_BASE}/todos/${USERNAME}`, {
-            method: "PUT",
-            body: JSON.stringify(nuevasTareas),
-            headers: {
-                "Content-Type": "application/json"
-            }
+        const tareaAEliminar = tareas[indice];
+        fetch(`${API_BASE}/todos/${tareaAEliminar.id}`, {
+            method: "DELETE"
         })
-            .then(res => res.json())
-            .then(() => {
-                setTareas(nuevasTareas);
-            })
-            .catch(err => console.error("Error al eliminar tarea:", err));
+        .then(res => {
+            if (!res.ok) throw new Error("No se pudo eliminar la tarea");
+            cargarTareas();
+        })
+        .catch(err => console.error("Error al eliminar tarea:", err));
     };
 
     const limpiarTareas = () => {
-        fetch(`${API_BASE}/todos/${USERNAME}`, {
-            method: "PUT",
-            body: JSON.stringify([]),
-            headers: {
-                "Content-Type": "application/json"
-            }
+        fetch(`${API_BASE}/users/${USERNAME}`, {
+            method: "DELETE"
         })
-            .then(res => res.json())
-            .then(() => {
-                setTareas([]); 
-            })
-            .catch(err => console.error("Error al limpiar todas las tareas:", err));
+        .then(res => {
+            if (!res.ok) throw new Error("No se pudieron borrar las tareas");
+            return fetch(`${API_BASE}/users/${USERNAME}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify([{ label: "init", is_done: false }])
+            });
+        })
+        .then(() => cargarTareas())
+        .catch(err => console.error("Error al limpiar todas las tareas:", err));
     };
 
     return (
@@ -115,8 +114,8 @@ const TodoList = () => {
                 {tareas.length === 0 ? (
                     <li className="empty">No hay tareas, añadir tareas</li>
                 ) : (
-                    tareas.map((tarea, i) => (
-                        <li key={i} className="todo-item">
+                    tareas.map((tarea,i) => (
+                        <li key={tarea.id} className="todo-item">
                             {tarea.label}
                             <span className="delete" onClick={() => eliminarTarea(i)}>
                                 <i className="fa-solid fa-xmark"></i>
